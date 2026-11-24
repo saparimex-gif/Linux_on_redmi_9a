@@ -1,0 +1,73 @@
+name: Build Pure Linux Stage 1 (Dandelion)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Toolchain & Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+            bc bison flex libssl-dev libelf-dev cpio gzip wget curl python2 python3 git device-tree-compiler
+          sudo ln -sf /usr/bin/python2 /usr/bin/python
+
+      - name: Build Initramfs
+        run: |
+          chmod +x build_initramfs.sh
+          ./build_initramfs.sh
+
+      - name: Clone Dandelion Kernel Source
+        run: |
+          git clone --depth=1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b dandelion-q-oss kernel
+
+      - name: Patch Legacy Kernel Build Issues
+        working-directory: kernel
+        run: |
+          if [ -f crypto/xts.c ]; then
+            sed -i 's/\bfree\b/xts_free/g' crypto/xts.c
+          fi
+
+      - name: Configure Kernel
+        working-directory: kernel
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+
+          make HOSTCFLAGS="-fcommon" PYTHON=python2 dandelion_defconfig
+
+          ./scripts/config --enable CONFIG_DEVTMPFS
+          ./scripts/config --enable CONFIG_DEVTMPFS_MOUNT
+          ./scripts/config --enable CONFIG_VT
+          ./scripts/config --enable CONFIG_VT_CONSOLE
+          ./scripts/config --enable CONFIG_FRAMEBUFFER_CONSOLE
+          ./scripts/config --enable CONFIG_USB_CONFIGFS
+          ./scripts/config --enable CONFIG_USB_CONFIGFS_RNDIS
+
+          ./scripts/config --disable CONFIG_SECURITY_SELINUX
+          ./scripts/config --disable CONFIG_ANDROID_PARANOID_NETWORK
+
+          make HOSTCFLAGS="-fcommon" PYTHON=python2 olddefconfig
+
+      - name: Compile Kernel Image & DTB
+        working-directory: kernel
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          KCFLAGS="-Wno-array-bounds -Wno-attribute-alias -Wno-packed-not-aligned -Wno-stringop-overflow -Wno-zero-length-bounds -Wno-address-of-packed-member -Wno-restrict -Wno-misleading-indentation -Wno-format-overflow -Wno-builtin-declaration-mismatch"
+          make -j$(nproc) HOSTCFLAGS="-fcommon" PYTHON=python2 KCFLAGS="$KCFLAGS" Image.gz-dtb
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dandelion-pure-linux-stage1
+          path: |
+            kernel/arch/arm64/boot/Image.gz-dtb
+            initramfs.cpio.gz
