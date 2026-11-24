@@ -53,7 +53,12 @@ jobs:
           ft_cfg = ft_dir / "focaltech_config.h"
           if ft_cfg.exists():
               cfg_src = ft_cfg.read_text(encoding="utf-8", errors="ignore")
-              cfg_src = re.sub(r"#define\s+FTS_AUTO_UPGRADE_EN[^\n]*", "/* #define FTS_AUTO_UPGRADE_EN 0 */", cfg_src)
+              if re.search(r"#define\s+FTS_AUTO_UPGRADE_EN\b", cfg_src):
+                  cfg_src = re.sub(r"#define\s+FTS_AUTO_UPGRADE_EN[^\n]*", "#define FTS_AUTO_UPGRADE_EN 0", cfg_src)
+              elif "FTS_AUTO_UPGRADE_EN" in cfg_src:
+                  cfg_src = re.sub(r"/\*[^\n]*FTS_AUTO_UPGRADE_EN[^\n]*\*/", "#define FTS_AUTO_UPGRADE_EN 0", cfg_src)
+              else:
+                  cfg_src += "\n#define FTS_AUTO_UPGRADE_EN 0\n"
               ft_cfg.write_text(cfg_src, encoding="utf-8")
 
               inc_files = set(re.findall(r"[\"'\'']([^\"'\'']+\.i)[\"'\'']", cfg_src))
@@ -109,7 +114,7 @@ jobs:
           for d in $(find drivers sound include -name "helio-dvfsrc.h" -exec dirname {} \; 2>/dev/null | sort -u); do
             EXTRA_INC="$EXTRA_INC -I$(pwd)/$d"
           done
-          KCFLAGS="-Wno-array-bounds -Wno-attribute-alias -Wno-packed-not-aligned -Wno-stringop-overflow -Wno-zero-length-bounds -Wno-address-of-packed-member -Wno-restrict -Wno-misleading-indentation -Wno-format-overflow -Wno-builtin-declaration-mismatch -Wno-unused-function -Wno-maybe-uninitialized -Wno-format -Wno-error $EXTRA_INC"
+          KCFLAGS="-Wno-array-bounds -Wno-attribute-alias -Wno-packed-not-aligned -Wno-stringop-overflow -Wno-zero-length-bounds -Wno-address-of-packed-member -Wno-restrict -Wno-misleading-indentation -Wno-format-overflow -Wno-builtin-declaration-mismatch -Wno-unused-function -Wno-maybe-uninitialized -Wno-format -Wno-undef -Wno-error $EXTRA_INC"
           make -j$(nproc) HOSTCFLAGS="-fcommon" PYTHON=python2 KCFLAGS="$KCFLAGS" Image.gz-dtb
 
       - name: Upload Artifacts
