@@ -90,6 +90,10 @@ jobs:
 
           make HOSTCFLAGS="-fcommon" PYTHON=python2 dandelion_defconfig
 
+          ./scripts/config --disable CONFIG_CC_STACKPROTECTOR_STRONG
+          ./scripts/config --disable CONFIG_CC_STACKPROTECTOR
+          ./scripts/config --enable CONFIG_CC_STACKPROTECTOR_NONE || true
+
           ./scripts/config --enable CONFIG_DEVTMPFS
           ./scripts/config --enable CONFIG_DEVTMPFS_MOUNT
           ./scripts/config --enable CONFIG_VT
