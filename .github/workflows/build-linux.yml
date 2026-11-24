@@ -52,7 +52,7 @@ jobs:
           ft_cfg = Path("drivers/input/touchscreen/mediatek/ft8006s_spi/focaltech_config.h")
           if ft_cfg.exists():
               cfg_src = ft_cfg.read_text(encoding="utf-8", errors="ignore")
-              cfg_src = cfg_src.replace("#define FTS_AUTO_UPGRADE_EN", "/* #define FTS_AUTO_UPGRADE_EN */")
+              cfg_src = re.sub(r"#define\s+FTS_AUTO_UPGRADE_EN[^\n]*", "/* #define FTS_AUTO_UPGRADE_EN 0 */", cfg_src)
               ft_cfg.write_text(cfg_src, encoding="utf-8")
           '
 
