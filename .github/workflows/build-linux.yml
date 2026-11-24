@@ -3,7 +3,8 @@ name: Build Pure Linux Stage 1 (Dandelion)
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   build:
@@ -31,31 +32,25 @@ jobs:
       - name: Patch Legacy Kernel Build Issues
         working-directory: kernel
         run: |
-          python3 - <<'EOF'
+          python3 -c '
           import re
           from pathlib import Path
-
-          # 1. Fix conflicting 'free' in crypto/xts.c
           xts = Path("crypto/xts.c")
           if xts.exists():
               src = xts.read_text(encoding="utf-8", errors="ignore")
               src = re.sub(r"\bfree\b", "dandelion_xts_free", src)
               src = re.sub(r"\.dandelion_xts_free\b", ".free", src)
               xts.write_text(src, encoding="utf-8")
-
-          # 2. Fix format mismatch in drivers/input/keyboard/mediatek/kpd.c
           kpd = Path("drivers/input/keyboard/mediatek/kpd.c")
           if kpd.exists():
               kpd_src = kpd.read_text(encoding="utf-8", errors="ignore")
-              kpd_src = re.sub(
-                  r"(kpdpwr_reset_store[\s\S]*?)%d([\s\S]*?kpdpwr_status)",
-                  r"\1%lu\2",
-                  kpd_src,
-                  count=1
-              )
+              kpd_src = re.sub(r"(kpdpwr_reset_store[\s\S]*?)%d([\s\S]*?kpdpwr_status)", r"\1%lu\2", kpd_src, count=1)
               kpd.write_text(kpd_src, encoding="utf-8")
-          EOF
-
+          '
+          mkdir -p include/firmware
+          if [ ! -f include/firmware/fw_helitai_v0e.i ]; then
+            printf "static const unsigned char fts_fw_data[] = { 0x00 };\n" > include/firmware/fw_helitai_v0e.i
+          fi
           DVFSRC_HDR=$(find drivers sound include -name "helio-dvfsrc.h" 2>/dev/null | head -n 1 || true)
           if [ -n "$DVFSRC_HDR" ]; then
             HDR_DIR=$(dirname "$DVFSRC_HDR")
@@ -69,9 +64,7 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-
           make HOSTCFLAGS="-fcommon" PYTHON=python2 dandelion_defconfig
-
           ./scripts/config --enable CONFIG_DEVTMPFS
           ./scripts/config --enable CONFIG_DEVTMPFS_MOUNT
           ./scripts/config --enable CONFIG_VT
@@ -79,14 +72,11 @@ jobs:
           ./scripts/config --enable CONFIG_FRAMEBUFFER_CONSOLE
           ./scripts/config --enable CONFIG_USB_CONFIGFS
           ./scripts/config --enable CONFIG_USB_CONFIGFS_RNDIS
-
           ./scripts/config --disable CONFIG_SECURITY_SELINUX
           ./scripts/config --disable CONFIG_ANDROID_PARANOID_NETWORK
-
           if [ -z "$(find . -name 'helio-dvfsrc.h' 2>/dev/null | head -n 1)" ]; then
             ./scripts/config --disable CONFIG_MTK_DVFSRC_OPP
           fi
-
           make HOSTCFLAGS="-fcommon" PYTHON=python2 olddefconfig
 
       - name: Compile Kernel Image & DTB
