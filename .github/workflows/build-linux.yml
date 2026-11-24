@@ -37,21 +37,20 @@ jobs:
 
           p = Path("crypto/xts.c")
           if p.exists():
-              lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
-              print("=== BEFORE (lines 325-350) ===")
-              for idx in range(324, min(350, len(lines))):
-                  print(f"{idx+1}: {lines[idx]}")
-
-              src = "\n".join(lines) + "\n"
+              src = p.read_text(encoding="utf-8", errors="ignore")
               src = re.sub(r"\bfree\b", "dandelion_xts_free", src)
               src = re.sub(r"\.dandelion_xts_free\b", ".free", src)
               p.write_text(src, encoding="utf-8")
-
-              new_lines = p.read_text(encoding="utf-8").splitlines()
-              print("=== AFTER (lines 325-350) ===")
-              for idx in range(324, min(350, len(new_lines))):
-                  print(f"{idx+1}: {new_lines[idx]}")
           EOF
+
+          # Pastikan header helio-dvfsrc.h ditemukan jika ada di subdirektori source
+          DVFSRC_HDR=$(find drivers sound include -name "helio-dvfsrc.h" 2>/dev/null | head -n 1 || true)
+          if [ -n "$DVFSRC_HDR" ]; then
+            HDR_DIR=$(dirname "$DVFSRC_HDR")
+            echo "Found helio-dvfsrc.h in: $HDR_DIR"
+            sed -i "s|#include \"helio-dvfsrc.h\"|#include <helio-dvfsrc.h>|g" drivers/devfreq/helio-dvfsrc-opp.c 2>/dev/null || true
+            sed -i "s|ccflags-y +=|ccflags-y += -I\$(srctree)/$HDR_DIR|g" drivers/devfreq/Makefile 2>/dev/null || true
+          fi
 
       - name: Configure Kernel
         working-directory: kernel
@@ -72,6 +71,11 @@ jobs:
           ./scripts/config --disable CONFIG_SECURITY_SELINUX
           ./scripts/config --disable CONFIG_ANDROID_PARANOID_NETWORK
 
+          # Jika helio-dvfsrc.h memang tidak ada sama sekali di repo, nonaktifkan driver opp terkait
+          if [ -z "$(find . -name 'helio-dvfsrc.h' 2>/dev/null | head -n 1)" ]; then
+            ./scripts/config --disable CONFIG_MTK_DVFSRC_OPP
+          fi
+
           make HOSTCFLAGS="-fcommon" PYTHON=python2 olddefconfig
 
       - name: Compile Kernel Image & DTB
@@ -79,7 +83,11 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          KCFLAGS="-Wno-array-bounds -Wno-attribute-alias -Wno-packed-not-aligned -Wno-stringop-overflow -Wno-zero-length-bounds -Wno-address-of-packed-member -Wno-restrict -Wno-misleading-indentation -Wno-format-overflow -Wno-builtin-declaration-mismatch -Wno-unused-function"
+          EXTRA_INC=""
+          for d in $(find drivers sound include -name "helio-dvfsrc.h" -exec dirname {} \; 2>/dev/null | sort -u); do
+            EXTRA_INC="$EXTRA_INC -I$(pwd)/$d"
+          done
+          KCFLAGS="-Wno-array-bounds -Wno-attribute-alias -Wno-packed-not-aligned -Wno-stringop-overflow -Wno-zero-length-bounds -Wno-address-of-packed-member -Wno-restrict -Wno-misleading-indentation -Wno-format-overflow -Wno-builtin-declaration-mismatch -Wno-unused-function -Wno-maybe-uninitialized -Wno-error $EXTRA_INC"
           make -j$(nproc) HOSTCFLAGS="-fcommon" PYTHON=python2 KCFLAGS="$KCFLAGS" Image.gz-dtb
 
       - name: Upload Artifacts
