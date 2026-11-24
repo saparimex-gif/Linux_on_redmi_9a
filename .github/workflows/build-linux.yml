@@ -49,18 +49,23 @@ jobs:
               kpd_src = re.sub(r"(kpdpwr_reset_store[\s\S]*?)%d([\s\S]*?kpdpwr_status)", r"\1%lu\2", kpd_src, count=1)
               kpd.write_text(kpd_src, encoding="utf-8")
 
-          ft_cfg = Path("drivers/input/touchscreen/mediatek/ft8006s_spi/focaltech_config.h")
+          ft_dir = Path("drivers/input/touchscreen/mediatek/ft8006s_spi")
+          ft_cfg = ft_dir / "focaltech_config.h"
           if ft_cfg.exists():
               cfg_src = ft_cfg.read_text(encoding="utf-8", errors="ignore")
               cfg_src = re.sub(r"#define\s+FTS_AUTO_UPGRADE_EN[^\n]*", "/* #define FTS_AUTO_UPGRADE_EN 0 */", cfg_src)
               ft_cfg.write_text(cfg_src, encoding="utf-8")
-          '
 
-          STUB_CONTENT='static const unsigned char fw_helitai_v0e[] = { 0x00 };'
-          mkdir -p include/firmware
-          mkdir -p drivers/input/touchscreen/mediatek/ft8006s_spi/include/firmware
-          printf "%s\n" "$STUB_CONTENT" > include/firmware/fw_helitai_v0e.i
-          printf "%s\n" "$STUB_CONTENT" > drivers/input/touchscreen/mediatek/ft8006s_spi/include/firmware/fw_helitai_v0e.i
+              inc_files = set(re.findall(r"[\"'\'']([^\"'\'']+\.i)[\"'\'']", cfg_src))
+              inc_files.update(["include/firmware/fw_helitai_v0e.i", "include/firmware/fw_sample.i"])
+              stub_bytes = "0x00, 0x00, 0x00, 0x00\n"
+              for rel in inc_files:
+                  for base in [Path("."), ft_dir]:
+                      target = base / rel
+                      if not target.exists():
+                          target.parent.mkdir(parents=True, exist_ok=True)
+                          target.write_text(stub_bytes, encoding="utf-8")
+          '
 
           DVFSRC_HDR=$(find drivers sound include -name "helio-dvfsrc.h" 2>/dev/null | head -n 1 || true)
           if [ -n "$DVFSRC_HDR" ]; then
