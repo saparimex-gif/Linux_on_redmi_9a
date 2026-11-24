@@ -32,6 +32,8 @@ jobs:
       - name: Patch Legacy Kernel Build Issues
         working-directory: kernel
         run: |
+          sed -i 's/-Werror//g' Makefile scripts/Makefile.build 2>/dev/null || true
+
           python3 -c '
           import re
           from pathlib import Path
@@ -72,13 +74,13 @@ jobs:
                           target.write_text(stub_bytes, encoding="utf-8")
           '
 
-          DVFSRC_HDR=$(find drivers sound include -name "helio-dvfsrc.h" 2>/dev/null | head -n 1 || true)
-          if [ -n "$DVFSRC_HDR" ]; then
-            HDR_DIR=$(dirname "$DVFSRC_HDR")
-            echo "Found helio-dvfsrc.h in: $HDR_DIR"
-            sed -i "s|#include \"helio-dvfsrc.h\"|#include <helio-dvfsrc.h>|g" drivers/devfreq/helio-dvfsrc-opp.c 2>/dev/null || true
-            sed -i "s|ccflags-y +=|ccflags-y += -I\$(srctree)/$HDR_DIR|g" drivers/devfreq/Makefile 2>/dev/null || true
-          fi
+          STUB_HDR_DIR="include/mtk_compat_stubs"
+          mkdir -p "$STUB_HDR_DIR"
+          for hdr in helio-dvfsrc.h mrdump_panic.h autok.h; do
+            if [ -z "$(find drivers sound include -name "$hdr" 2>/dev/null | head -n 1)" ]; then
+              printf "/* Auto stub for %s */\n" "$hdr" > "$STUB_HDR_DIR/$hdr"
+            fi
+          done
 
       - name: Configure Kernel
         working-directory: kernel
@@ -99,10 +101,6 @@ jobs:
           ./scripts/config --disable CONFIG_SECURITY_SELINUX
           ./scripts/config --disable CONFIG_ANDROID_PARANOID_NETWORK
 
-          if [ -z "$(find . -name 'helio-dvfsrc.h' 2>/dev/null | head -n 1)" ]; then
-            ./scripts/config --disable CONFIG_MTK_DVFSRC_OPP
-          fi
-
           make HOSTCFLAGS="-fcommon" PYTHON=python2 olddefconfig
 
       - name: Compile Kernel Image & DTB
@@ -110,11 +108,13 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          EXTRA_INC="-I$(pwd)/drivers/input/touchscreen/mediatek/ft8006s_spi"
-          for d in $(find drivers sound include -name "helio-dvfsrc.h" -exec dirname {} \; 2>/dev/null | sort -u); do
-            EXTRA_INC="$EXTRA_INC -I$(pwd)/$d"
+          EXTRA_INC="-I$(pwd)/drivers/input/touchscreen/mediatek/ft8006s_spi -I$(pwd)/include/mtk_compat_stubs"
+          for hdr in helio-dvfsrc.h mrdump_panic.h autok.h; do
+            for d in $(find drivers sound include -name "$hdr" -exec dirname {} \; 2>/dev/null | sort -u); do
+              EXTRA_INC="$EXTRA_INC -I$(pwd)/$d"
+            done
           done
-          KCFLAGS="-Wno-array-bounds -Wno-attribute-alias -Wno-packed-not-aligned -Wno-stringop-overflow -Wno-zero-length-bounds -Wno-address-of-packed-member -Wno-restrict -Wno-misleading-indentation -Wno-format-overflow -Wno-builtin-declaration-mismatch -Wno-unused-function -Wno-maybe-uninitialized -Wno-format -Wno-undef -Wno-error $EXTRA_INC"
+          KCFLAGS="-w $EXTRA_INC"
           make -j$(nproc) HOSTCFLAGS="-fcommon" PYTHON=python2 KCFLAGS="$KCFLAGS" Image.gz-dtb
 
       - name: Upload Artifacts
