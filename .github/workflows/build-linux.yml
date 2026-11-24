@@ -32,8 +32,6 @@ jobs:
       - name: Patch Legacy Kernel Build Issues
         working-directory: kernel
         run: |
-          sed -i 's/-Werror//g' Makefile scripts/Makefile.build 2>/dev/null || true
-
           python3 -c '
           import re
           from pathlib import Path
@@ -118,7 +116,7 @@ jobs:
               EXTRA_INC="$EXTRA_INC -I$(pwd)/$d"
             done
           done
-          KCFLAGS="-w $EXTRA_INC"
+          KCFLAGS="-w -Wno-error $EXTRA_INC"
           make -j$(nproc) HOSTCFLAGS="-fcommon" PYTHON=python2 KCFLAGS="$KCFLAGS" Image.gz-dtb
 
       - name: Upload Artifacts
