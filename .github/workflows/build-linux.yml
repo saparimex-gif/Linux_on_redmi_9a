@@ -35,22 +35,33 @@ jobs:
           python3 -c '
           import re
           from pathlib import Path
+
           xts = Path("crypto/xts.c")
           if xts.exists():
               src = xts.read_text(encoding="utf-8", errors="ignore")
               src = re.sub(r"\bfree\b", "dandelion_xts_free", src)
               src = re.sub(r"\.dandelion_xts_free\b", ".free", src)
               xts.write_text(src, encoding="utf-8")
+
           kpd = Path("drivers/input/keyboard/mediatek/kpd.c")
           if kpd.exists():
               kpd_src = kpd.read_text(encoding="utf-8", errors="ignore")
               kpd_src = re.sub(r"(kpdpwr_reset_store[\s\S]*?)%d([\s\S]*?kpdpwr_status)", r"\1%lu\2", kpd_src, count=1)
               kpd.write_text(kpd_src, encoding="utf-8")
+
+          ft_cfg = Path("drivers/input/touchscreen/mediatek/ft8006s_spi/focaltech_config.h")
+          if ft_cfg.exists():
+              cfg_src = ft_cfg.read_text(encoding="utf-8", errors="ignore")
+              cfg_src = cfg_src.replace("#define FTS_AUTO_UPGRADE_EN", "/* #define FTS_AUTO_UPGRADE_EN */")
+              ft_cfg.write_text(cfg_src, encoding="utf-8")
           '
+
+          STUB_CONTENT='static const unsigned char fw_helitai_v0e[] = { 0x00 };'
           mkdir -p include/firmware
-          if [ ! -f include/firmware/fw_helitai_v0e.i ]; then
-            printf "static const unsigned char fts_fw_data[] = { 0x00 };\n" > include/firmware/fw_helitai_v0e.i
-          fi
+          mkdir -p drivers/input/touchscreen/mediatek/ft8006s_spi/include/firmware
+          printf "%s\n" "$STUB_CONTENT" > include/firmware/fw_helitai_v0e.i
+          printf "%s\n" "$STUB_CONTENT" > drivers/input/touchscreen/mediatek/ft8006s_spi/include/firmware/fw_helitai_v0e.i
+
           DVFSRC_HDR=$(find drivers sound include -name "helio-dvfsrc.h" 2>/dev/null | head -n 1 || true)
           if [ -n "$DVFSRC_HDR" ]; then
             HDR_DIR=$(dirname "$DVFSRC_HDR")
@@ -64,7 +75,9 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
+
           make HOSTCFLAGS="-fcommon" PYTHON=python2 dandelion_defconfig
+
           ./scripts/config --enable CONFIG_DEVTMPFS
           ./scripts/config --enable CONFIG_DEVTMPFS_MOUNT
           ./scripts/config --enable CONFIG_VT
@@ -72,11 +85,14 @@ jobs:
           ./scripts/config --enable CONFIG_FRAMEBUFFER_CONSOLE
           ./scripts/config --enable CONFIG_USB_CONFIGFS
           ./scripts/config --enable CONFIG_USB_CONFIGFS_RNDIS
+
           ./scripts/config --disable CONFIG_SECURITY_SELINUX
           ./scripts/config --disable CONFIG_ANDROID_PARANOID_NETWORK
+
           if [ -z "$(find . -name 'helio-dvfsrc.h' 2>/dev/null | head -n 1)" ]; then
             ./scripts/config --disable CONFIG_MTK_DVFSRC_OPP
           fi
+
           make HOSTCFLAGS="-fcommon" PYTHON=python2 olddefconfig
 
       - name: Compile Kernel Image & DTB
@@ -84,7 +100,7 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          EXTRA_INC=""
+          EXTRA_INC="-I$(pwd)/drivers/input/touchscreen/mediatek/ft8006s_spi"
           for d in $(find drivers sound include -name "helio-dvfsrc.h" -exec dirname {} \; 2>/dev/null | sort -u); do
             EXTRA_INC="$EXTRA_INC -I$(pwd)/$d"
           done
