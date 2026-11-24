@@ -31,9 +31,18 @@ jobs:
       - name: Patch Legacy Kernel Build Issues
         working-directory: kernel
         run: |
-          if [ -f crypto/xts.c ]; then
-            sed -i -E 's/\bfree\(/xts_free(/g; s/\bvoid free\b/void xts_free/g; s/\.xts_free\b/.free/g' crypto/xts.c
-          fi
+          python3 - <<'EOF'
+          import re
+          from pathlib import Path
+
+          p = Path("crypto/xts.c")
+          if p.exists():
+              src = p.read_text(encoding="utf-8", errors="ignore")
+              # Ganti deklarasi & pemanggilan fungsi lokal 'free', tapi biarkan field '.free'
+              src = re.sub(r'(?<!\.)\bfree\b(?=\s*\()', 'xts_free', src)
+              src = re.sub(r'(\b(?:static\s+)?(?:void|int)\s+)free(\s*\()', r'\1xts_free\2', src)
+              p.write_text(src, encoding="utf-8")
+          EOF
 
       - name: Configure Kernel
         working-directory: kernel
@@ -61,7 +70,7 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          KCFLAGS="-Wno-array-bounds -Wno-attribute-alias -Wno-packed-not-aligned -Wno-stringop-overflow -Wno-zero-length-bounds -Wno-address-of-packed-member -Wno-restrict -Wno-misleading-indentation -Wno-format-overflow -Wno-builtin-declaration-mismatch"
+          KCFLAGS="-Wno-array-bounds -Wno-attribute-alias -Wno-packed-not-aligned -Wno-stringop-overflow -Wno-zero-length-bounds -Wno-address-of-packed-member -Wno-restrict -Wno-misleading-indentation -Wno-format-overflow -Wno-builtin-declaration-mismatch -Wno-unused-function"
           make -j$(nproc) HOSTCFLAGS="-fcommon" PYTHON=python2 KCFLAGS="$KCFLAGS" Image.gz-dtb
 
       - name: Upload Artifacts
