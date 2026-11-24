@@ -32,7 +32,7 @@ jobs:
         working-directory: kernel
         run: |
           if [ -f crypto/xts.c ]; then
-            sed -i 's/\bfree\b/xts_free/g' crypto/xts.c
+            sed -i -E 's/\bfree\(/xts_free(/g; s/\bvoid free\b/void xts_free/g; s/\.xts_free\b/.free/g' crypto/xts.c
           fi
 
       - name: Configure Kernel
