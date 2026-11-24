@@ -35,15 +35,27 @@ jobs:
           import re
           from pathlib import Path
 
-          p = Path("crypto/xts.c")
-          if p.exists():
-              src = p.read_text(encoding="utf-8", errors="ignore")
+          # 1. Fix conflicting 'free' in crypto/xts.c
+          xts = Path("crypto/xts.c")
+          if xts.exists():
+              src = xts.read_text(encoding="utf-8", errors="ignore")
               src = re.sub(r"\bfree\b", "dandelion_xts_free", src)
               src = re.sub(r"\.dandelion_xts_free\b", ".free", src)
-              p.write_text(src, encoding="utf-8")
+              xts.write_text(src, encoding="utf-8")
+
+          # 2. Fix format mismatch in drivers/input/keyboard/mediatek/kpd.c
+          kpd = Path("drivers/input/keyboard/mediatek/kpd.c")
+          if kpd.exists():
+              kpd_src = kpd.read_text(encoding="utf-8", errors="ignore")
+              kpd_src = re.sub(
+                  r"(kpdpwr_reset_store[\s\S]*?)%d([\s\S]*?kpdpwr_status)",
+                  r"\1%lu\2",
+                  kpd_src,
+                  count=1
+              )
+              kpd.write_text(kpd_src, encoding="utf-8")
           EOF
 
-          # Pastikan header helio-dvfsrc.h ditemukan jika ada di subdirektori source
           DVFSRC_HDR=$(find drivers sound include -name "helio-dvfsrc.h" 2>/dev/null | head -n 1 || true)
           if [ -n "$DVFSRC_HDR" ]; then
             HDR_DIR=$(dirname "$DVFSRC_HDR")
@@ -71,7 +83,6 @@ jobs:
           ./scripts/config --disable CONFIG_SECURITY_SELINUX
           ./scripts/config --disable CONFIG_ANDROID_PARANOID_NETWORK
 
-          # Jika helio-dvfsrc.h memang tidak ada sama sekali di repo, nonaktifkan driver opp terkait
           if [ -z "$(find . -name 'helio-dvfsrc.h' 2>/dev/null | head -n 1)" ]; then
             ./scripts/config --disable CONFIG_MTK_DVFSRC_OPP
           fi
@@ -87,7 +98,7 @@ jobs:
           for d in $(find drivers sound include -name "helio-dvfsrc.h" -exec dirname {} \; 2>/dev/null | sort -u); do
             EXTRA_INC="$EXTRA_INC -I$(pwd)/$d"
           done
-          KCFLAGS="-Wno-array-bounds -Wno-attribute-alias -Wno-packed-not-aligned -Wno-stringop-overflow -Wno-zero-length-bounds -Wno-address-of-packed-member -Wno-restrict -Wno-misleading-indentation -Wno-format-overflow -Wno-builtin-declaration-mismatch -Wno-unused-function -Wno-maybe-uninitialized -Wno-error $EXTRA_INC"
+          KCFLAGS="-Wno-array-bounds -Wno-attribute-alias -Wno-packed-not-aligned -Wno-stringop-overflow -Wno-zero-length-bounds -Wno-address-of-packed-member -Wno-restrict -Wno-misleading-indentation -Wno-format-overflow -Wno-builtin-declaration-mismatch -Wno-unused-function -Wno-maybe-uninitialized -Wno-format -Wno-error $EXTRA_INC"
           make -j$(nproc) HOSTCFLAGS="-fcommon" PYTHON=python2 KCFLAGS="$KCFLAGS" Image.gz-dtb
 
       - name: Upload Artifacts
